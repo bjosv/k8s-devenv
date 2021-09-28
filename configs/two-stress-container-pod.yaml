@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: two-stress-containers
+spec:
+  restartPolicy: Never
+
+  containers:
+  - name: container-stress-1
+    image: mohsenmottaghi/container-stress:latest
+    command: ["stress", "--verbose", "--cpu", "1"]
+    resources:
+      limits:
+        memory: "1200Mi"
+        cpu: "1000m"
+      requests:
+        memory: "1000Mi"
+        cpu: "100m"
+  - name: container-stress-2
+    image: mohsenmottaghi/container-stress:latest
+    command: ["stress", "--verbose", "--cpu", "1"]
+    resources:
+      limits:
+        memory: "1200Mi"
+        cpu: "1000m"
+      requests:
+        memory: "1000Mi"
+        cpu: "100m"
