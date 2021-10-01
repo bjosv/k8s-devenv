@@ -4,7 +4,7 @@
 > minikube (gives v0.4.2)
 minikube addons enable metrics-server
 
-> kind or minikube (gives v0.5.0)
+> kind or minikube (gives >= v0.5.0)
 kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 kubectl edit deployment metrics-server -n kube-system
   Add following args to the metrics-server container:

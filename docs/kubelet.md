@@ -3,12 +3,20 @@
 ## Build kubelet
 cd $GOPATH/src/k8s.io/kubernetes/
 KUBE_BUILD_PLATFORMS=linux/amd64 make WHAT=cmd/kubelet
+
+> minikube
 scp -i $(minikube ssh-key --node minikube-m03) _output/local/bin/linux/amd64/kubelet docker@$(minikube ip --node minikube-m03):~/
 minikube ssh -n minikube-m03 sudo chown root.root kubelet
 minikube ssh -n minikube-m03 sudo mv kubelet /var/lib/minikube/binaries/v1.21.2/kubelet
 minikube ssh -n minikube-m03 'sudo journalctl --rotate && sudo journalctl --vacuum-time=1s'
 minikube ssh -n minikube-m03 sudo systemctl restart kubelet
 minikube ssh -n minikube-m03 'sudo journalctl -u kubelet.service | grep BJOSV'
+> kind
+docker cp _output/local/bin/linux/amd64/kubelet kind-worker:/usr/bin/kubelet
+docker exec -it kind-worker chown root.root /usr/bin/kubelet
+docker exec -it kind-worker sh -c 'journalctl --rotate && journalctl --vacuum-time=1s'
+docker exec -it kind-worker systemctl restart kubelet
+docker exec -it kind-worker journalctl -u kubelet | grep BJOSV
 
 ## Get kubelet endpoint on node
 kubectl get node minikube-m02 -o json | jq '.status.daemonEndpoints'
@@ -35,10 +43,13 @@ minikube ssh -n minikube-m03 'sudo journalctl --rotate && sudo journalctl --vacu
 ## Enable access to kubelets metrics/resource endpoint
 k apply -f configs/cadvisor.yaml
 TOKEN=$(kubectl -n kube-system get secrets monitoring-secret-token -ojsonpath='{.data.token}' | base64 -d)
+> minikube
 minikube ssh -n minikube-m03 -- curl -k --header \"Authorization: Bearer $TOKEN\" https://127.0.0.1:10250/metrics/resource | grep container_cpu_usage_seconds_total
 or
 minikube ssh -n minikube -- curl -k --header \"Authorization: Bearer $TOKEN\" 'https://minikube:10250/stats/summary?only_cpu_and_memory=true'
 minikube ssh -n minikube -- curl -k --header \"Authorization: Bearer $TOKEN\" 'https://minikube:10250/stats/summary?only_cpu_and_memory=true' | jq '.pods[] | select(.podRef.name == "kube-controller-manager-minikube").cpu'
+> kind
+docker exec -it kind-worker curl -k --header 'Authorization: Bearer '$TOKEN 'https://kind-worker:10250/stats/summary?only_cpu_and_memory=true' | jq '.pods[] | select(.podRef.name == "cpuload").cpu'
 
 ## Links
 ### Kubelet process args
@@ -64,7 +75,10 @@ kubelet is a provider, uses StatsProvider
 #### Stats provider
   kubernetes/pkg/kubelet/cadvisor/cadvisor_linux.go   ContainerInfoV2()
 
-#### Stats "fetcher"
+vendor/github.com/google/cadvisor/manager/manager.go
+GetContainerInfoV2()
+
+vendor/github.com/google/cadvisor/manager/container.go
 - cAdvisor adds supervision of found containers, running parallell to the statistic provider endpoint.
 - A housekeeping timer checks cpu/mem stats at a calculated interval.
   If stats have not changed since previous reading, the interval will be increased until next reading.
@@ -78,6 +92,22 @@ kubelet is a provider, uses StatsProvider
 
 - The maximum interval (15s, which will be multiplied with a random jitter, times 1-2)
   is not configurable.
+
+
+#### Stats "fetcher"
+Data placed in m.containers
+
+kubernetes/vendor/github.com/google/cadvisor/manager/container.go
+- housekeepingTick
+- cd.updateStats()
+- cd.handler.GetStats()
+vendor/github.com/google/cadvisor/container/containerd/handler.go
+- GetStats()
+vendor/github.com/google/cadvisor/container/libcontainer/handler.go
+- GetStats()
+
+vendor/github.com/opencontainers/runc/libcontainer/cgroups/fs2/fs2.go
+vendor/github.com/opencontainers/runc/libcontainer/cgroups/fs2/cpu.go
 
 #### Container management
 CPU:
